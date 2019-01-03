@@ -1,0 +1,33 @@
+{
+  "name": "msio",
+  "main": "./build/index.js",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf ./build",
+    "start": "node ./build/index",
+    "start-ts": "ts-node ./src/index",
+    "lint": "tslint -c tslint.json ./src/**/*.ts",
+    "prebuild": "yarn run lint && yarn test && yarn run clean",
+    "prepublishOnly": "yarn build",
+    "test": "mocha --require ts-node/register ./test/*.spec.ts"
+  },
+  "version": "0.0.1",
+  "private": false,
+  "license": "MIT",
+  "author": "MiseryLee <miserylee@foxmail.com>",
+  "description": "Micro-service IO",
+  "typings": "./build/index.d.ts",
+  "pre-commit": [
+    "prepublishOnly"
+  ],
+  "devDependencies": {
+    "@types/mocha": "5.2.5",
+    "@types/node": "10.12.18",
+    "mocha": "5.2.0",
+    "pre-commit": "1.2.2",
+    "ts-node": "7.0.1",
+    "tslint": "5.12.0",
+    "tslint-clean-code": "0.2.9",
+    "typescript": "3.2.2"
+  }
+}
