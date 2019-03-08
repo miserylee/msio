@@ -2,3 +2,4 @@
 /.gitignore
 /tsconfig.json
 /tslint.json
+/test/keys.json
