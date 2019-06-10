@@ -11,7 +11,7 @@
     "prepublishOnly": "yarn build",
     "test": "mocha --require ts-node/register ./test/*.spec.ts"
   },
-  "version": "0.5.2",
+  "version": "0.6.0",
   "private": false,
   "license": "MIT",
   "author": "MiseryLee <miserylee@foxmail.com>",
