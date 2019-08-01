@@ -10,11 +10,6 @@ const msio = new MSIO({
   service: 1,
   secret: keys.secret,
   connection,
-  seizeDuration: 10000,
-  idleDuration: 3000,
-  maxConsumeCount: 10,
-  maxRetryTimes: 5,
-
   async getServiceToken(from, to, exchangeToken) {
     const { data } = await Axios.post<{ serviceToken: string }>(
       'http://localhost:3002/auth/serviceToken',

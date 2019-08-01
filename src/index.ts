@@ -182,6 +182,41 @@ export class MSDestination {
   }
 }
 
+export interface IMSQueueDelegate {
+  didAddMessage?(message: IMessageDocument, session?: ClientSession): Promise<void>;
+
+  didDelayConsume?(message: IMessageDocument): Promise<void>;
+
+  didConsumeSucceeded?(message: IMessageDocument, result: any): Promise<void>;
+
+  didConsumeFailed?(message: IMessageDocument, error: Error): Promise<void>;
+
+  didMessageDead?(message: IMessageDocument): Promise<void>;
+}
+
+interface IMSQueueForceDelegate {
+  didAddMessage(message: IMessageDocument, session?: ClientSession): Promise<void>;
+
+  didDelayConsume(message: IMessageDocument): Promise<void>;
+
+  didConsumeSucceeded(message: IMessageDocument, result: any): Promise<void>;
+
+  didConsumeFailed(message: IMessageDocument, error: Error): Promise<void>;
+
+  didMessageDead(message: IMessageDocument): Promise<void>;
+}
+
+export interface IMSQueueOptionalOptions {
+  connection?: Connection;
+
+  seizeDuration?: number;
+  idleDuration?: number;
+  maxConsumeCount?: number;
+  maxRetryTimes?: number;
+
+  delegate?: IMSQueueDelegate;
+}
+
 export interface IMSQueueOptions {
   connection: Connection;
 
@@ -191,6 +226,8 @@ export interface IMSQueueOptions {
   maxRetryTimes: number;
 
   destination: MSDestination;
+
+  delegate?: IMSQueueDelegate;
 }
 
 export interface IQueueStatResult {
@@ -212,6 +249,7 @@ export class MSQueue extends EventEmitter {
   private _id: ObjectID;
   private _pendingMessages: ObjectID[] = [];
   private _timer?: NodeJS.Timer;
+  private _delegate: IMSQueueForceDelegate;
 
   constructor(options: IMSQueueOptions) {
     super();
@@ -221,6 +259,24 @@ export class MSQueue extends EventEmitter {
       this._Model = options.connection.model('msio-queue', messageSchema);
     }
     this._options = options;
+    this._delegate = {
+      async didAddMessage(message: IMessageDocument, session?: ClientSession) {
+        // noop.
+      },
+      async didConsumeFailed(message: IMessageDocument, error: Error) {
+        // noop.
+      },
+      async didConsumeSucceeded(message: IMessageDocument, result: any) {
+        // noop.
+      },
+      async didDelayConsume(message: IMessageDocument) {
+        // noop.
+      },
+      async didMessageDead(message: IMessageDocument) {
+        // noop.
+      },
+      ...(options.delegate || {}),
+    };
 
     this._id = new ObjectId();
 
@@ -326,6 +382,7 @@ export class MSQueue extends EventEmitter {
       service: this._options.destination.service,
       visibleAt: new Date(),
     }).save({ session });
+    await this._delegate.didAddMessage(msg, session);
     return msg._id;
   }
 
@@ -407,13 +464,15 @@ export class MSQueue extends EventEmitter {
           message.visibleAt = new Date(Date.now() + 500);
           message.seizedBy = undefined;
           await message.save();
+          this._delegate.didDelayConsume(message).catch(e => this.emit('error', e));
           return;
         }
       }
-      await this._options.destination.write(message.path, message.body);
+      const result = await this._options.destination.write(message.path, message.body);
       await message.remove();
+      this._delegate.didConsumeSucceeded(message, result).catch(e => this.emit('error', e));
     } catch (e) {
-      message.visibleAt = new Date(Date.now() + 1000 * Math.pow(2, message.retryTimes));
+      message.visibleAt = new Date(Date.now() + 1000 * Math.pow(4, message.retryTimes));
       message.seizedBy = undefined;
       message.retryErrors.push(e.message);
       message.retryTimes += 1;
@@ -423,6 +482,10 @@ export class MSQueue extends EventEmitter {
       message.save().catch((error: Error) => {
         this.emit('error', error);
       });
+      this._delegate.didConsumeFailed(message, e).catch(err => this.emit('error', err));
+      if (message.isDead) {
+        this._delegate.didMessageDead(message).catch(err => this.emit('error', err));
+      }
     } finally {
       this._pendingMessages.splice(this._pendingMessages.indexOf(message._id), 1);
       if (this._pendingMessages.length === 0) {
@@ -438,12 +501,12 @@ export interface IMSOptions {
   service: number;
   secret: string;
 
-  connection: Connection;
+  connection?: Connection;
 
-  seizeDuration: number;
-  idleDuration: number;
-  maxConsumeCount: number;
-  maxRetryTimes: number;
+  seizeDuration?: number;
+  idleDuration?: number;
+  maxConsumeCount?: number;
+  maxRetryTimes?: number;
 
   getServiceToken: F_GetServiceToken;
 }
@@ -472,7 +535,13 @@ export default class MSIO extends EventEmitter {
     this._output = new MSOutput({ service, secret, getServiceToken });
   }
 
-  public addDestination(service: number, baseURL: string, pulseInterval: number) {
+  public addDestination(service: number, baseURL: string, options?: IMSQueueOptionalOptions): void;
+  public addDestination(service: number, baseURL: string, pulseInterval: number, options?: IMSQueueOptionalOptions): void;
+  public addDestination(service: number, baseURL: string, pulseInterval: number | IMSQueueOptionalOptions = {}, options: IMSQueueOptionalOptions = {}) {
+    if (typeof pulseInterval !== 'number') {
+      options = pulseInterval;
+      pulseInterval = 10000;
+    }
     const existsDestination = this._destinations[service];
     if (existsDestination) {
       existsDestination.destroy();
@@ -487,11 +556,26 @@ export default class MSIO extends EventEmitter {
     this._destinations[service] = destination;
     const {
       connection,
-      seizeDuration,
-      idleDuration,
-      maxConsumeCount,
-      maxRetryTimes,
-    } = this._options;
+      seizeDuration = 10000,
+      idleDuration = 3000,
+      maxConsumeCount = 10,
+      maxRetryTimes = 5,
+      delegate,
+    }: {
+      service: number;
+      connection?: Connection;
+      idleDuration?: number;
+      maxConsumeCount?: number;
+      seizeDuration?: number;
+      maxRetryTimes?: number;
+      delegate?: IMSQueueDelegate;
+    } = {
+      ...this._options,
+      ...options,
+    };
+    if (!connection) {
+      throw new Error('connection parameter should be applied either in MSIO options or Queue options');
+    }
     this._queues[service] = new MSQueue({
       connection,
       seizeDuration,
@@ -499,6 +583,7 @@ export default class MSIO extends EventEmitter {
       maxConsumeCount,
       maxRetryTimes,
       destination,
+      delegate,
     }).on('error', error => this.emit('error', error));
   }
 
