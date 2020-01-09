@@ -7,7 +7,6 @@ import { decode, sign, verify } from 'jsonwebtoken';
 import { Middleware } from 'koa';
 import { ClientSession, Connection, Model } from 'mongoose';
 import * as querystring from 'querystring';
-import { IQueueStatResult } from './index';
 import messageSchema, { IMessageDocument } from './schema';
 
 export interface IMSInputOptions {
