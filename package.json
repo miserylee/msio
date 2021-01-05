@@ -34,7 +34,7 @@
   },
   "dependencies": {
     "@types/jsonwebtoken": "^8.3.0",
-    "axios": "^0.18.0",
+    "axios": "^0.21.1",
     "erz": "^0.0.4",
     "jsonwebtoken": "^8.4.0"
   },
