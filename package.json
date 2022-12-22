@@ -36,7 +36,7 @@
     "@types/jsonwebtoken": "^8.3.0",
     "axios": "^0.18.0",
     "erz": "^0.0.4",
-    "jsonwebtoken": "^8.4.0"
+    "jsonwebtoken": "^9.0.0"
   },
   "peerDependencies": {
     "mongoose": "^5.4.3"
